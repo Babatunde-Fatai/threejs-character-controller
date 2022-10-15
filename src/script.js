@@ -5,6 +5,7 @@ import * as dat from "dat.gui";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader";
+import { PlayerControls } from "./PlayerControls.js";
 
 /**
  * Base
@@ -12,7 +13,7 @@ import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader";
 /**
  * Global Variables & Constants
  */
-let model;
+let model, player;
 let CharacterAnimations = {};
 let mixer = null;
 
@@ -126,6 +127,7 @@ class CharacterController {
       // gltf.scene.scale.set(0.1, 0.1, 0.);
       this._model = gltf.scene;
       this._model.rotation.set(0, Math.PI, 0);
+      this._model.position.set(-3.14, 0.1, -3.14);
       this._model.traverse((object) => {
         if (object.isMesh) {
           object.castShadow = true;
@@ -156,6 +158,8 @@ class CharacterController {
       fbxloader.load("/models/krtin/Idle.fbx", (a) => _OnLoad("idle", a));
     });
   }
+
+
 
   Update(timeInSeconds) {
     if (!this._model) return;
@@ -517,24 +521,31 @@ class JumpState extends State {
   }
 }
 
-/**
- * Floor
- */
-textureLoader.load("/textures/floor/floor.jpg", (texture) => {
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  let floorMesh = new THREE.PlaneBufferGeometry(100, 100);
-  let floorMaterial = new THREE.MeshStandardMaterial({
-    metalness: 0,
-    roughness: 0.8,
-    map: texture,
-  });
 
-  const floor = new THREE.Mesh(floorMesh, floorMaterial);
-  floor.receiveShadow = true;
-  floor.rotation.x = -Math.PI * 0.5;
-  scene.add(floor);
-});
+/**
+ * Environment
+ */
+
+
+const loadEnv = () => {
+
+  gltfLoader.load("/models/Rooms/Scifi.glb", (gltf) => {
+        // gltf.scene.scale.set(0.1, 0.1, 0.);
+        const _model = gltf.scene;
+        _model.rotation.set(0, Math.PI, 0);
+        _model.traverse((object) => {
+          if (object.isMesh) {
+            object.castShadow = true;
+          }
+        });
+        scene.add(_model);
+    
+      });
+
+
+}
+
+loadEnv();
 
 const RPMcharacter = new CharacterController();
 
@@ -557,6 +568,7 @@ scene.add(dirLight);
 const hemiLight = new THREE.HemisphereLight(0xffffff, 5);
 hemiLight.position.set(0, 500, 0);
 scene.add(hemiLight);
+
 /**
  * Sizes
  */
@@ -579,6 +591,74 @@ window.addEventListener("resize", () => {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 });
 
+
+
+/**
+ * Third Person Cam
+ */
+
+ class ThirdPersonCamera {
+  constructor(params) {
+    this._params = params;
+    this._camera = params.camera;
+
+    this._currentPosition = new THREE.Vector3();
+    this._currentLookat = new THREE.Vector3();
+  }
+
+  _CalculateIdealOffset() {
+    const idealOffset = new THREE.Vector3(-15, 20, -30);
+    idealOffset.applyQuaternion(this._params.target.Rotation);
+    idealOffset.add(this._params.target.Position);
+    return idealOffset;
+  }
+
+  _CalculateIdealLookat() {
+    const idealLookat = new THREE.Vector3(0, 10, 50);
+    idealLookat.applyQuaternion(this._params.target.Rotation);
+    idealLookat.add(this._params.target.Position);
+    return idealLookat;
+  }
+
+  Update(timeElapsed) {
+    const idealOffset = this._CalculateIdealOffset();
+    const idealLookat = this._CalculateIdealLookat();
+
+    // const t = 0.05;
+    // const t = 4.0 * timeElapsed;
+    const t = 1.0 - Math.pow(0.001, timeElapsed);
+
+    this._currentPosition.lerp(idealOffset, t);
+    this._currentLookat.lerp(idealLookat, t);
+
+    this._camera.position.copy(this._currentPosition);
+    this._camera.lookAt(this._currentLookat);
+  }
+}
+
+function _LerpOverFrames(frames, t) {
+  const s = new THREE.Vector3(0, 0, 0);
+  const e = new THREE.Vector3(100, 0, 0);
+  const c = s.clone();
+
+  for (let i = 0; i < frames; i++) {
+    c.lerp(e, t);
+  }
+  return c;
+}
+
+function _TestLerp(t1, t2) {
+  const v1 = _LerpOverFrames(100, t1);
+  const v2 = _LerpOverFrames(50, t2);
+  console.log(v1.x + ' | ' + v2.x);
+}
+
+_TestLerp(0.01, 0.01);
+_TestLerp(1.0 / 100.0, 1.0 / 50.0);
+_TestLerp(1.0 - Math.pow(0.3, 1.0 / 100.0), 
+          1.0 - Math.pow(0.3, 1.0 / 50.0));
+
+
 /**
  * Camera
  */
@@ -586,8 +666,8 @@ window.addEventListener("resize", () => {
 const camera = new THREE.PerspectiveCamera(
   75,
   sizes.width / sizes.height,
-  0.1,
-  100
+  0.01,
+  1000
 );
 camera.position.set(2, 2, 2);
 scene.add(camera);
@@ -596,6 +676,11 @@ scene.add(camera);
 const controls = new OrbitControls(camera, canvas);
 controls.target.set(0, 0.75, 0);
 controls.enableDamping = true;
+
+const thirdPersonCamera = new ThirdPersonCamera({
+  camera: camera,
+  // target: RPMcharacter,
+});
 
 /**
  * Renderer
@@ -610,6 +695,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.setSize(sizes.width, sizes.height);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.physicallyCorrectLights = true;
+
 
 /**
  * Animate
@@ -629,6 +715,10 @@ const tick = () => {
 
   // Update controls
   controls.update();
+
+  //update Camera
+
+  // thirdPersonCamera.Update(elapsedTime);
 
   // Render
   renderer.render(scene, camera);
