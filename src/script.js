@@ -5,7 +5,7 @@ import * as dat from "dat.gui";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader";
-import { PlayerControls } from "./PlayerControls.js";
+// import { PlayerControls } from "./PlayerControls.js";
 
 /**
  * Base
@@ -107,6 +107,35 @@ class State {
   Update() {}
 }
 
+/**
+ * Sizes
+ */
+ const sizes = {
+  width: window.innerWidth,
+  height: window.innerHeight,
+};
+
+
+/**
+ * Camera
+ */
+// Base camera
+const camera = new THREE.PerspectiveCamera(
+  75,
+  sizes.width / sizes.height,
+  0.01,
+  1000
+);
+
+
+    const cameraOffset = new THREE.Vector3(0.0, 1.9, 3.0); // NOTE Constant offset between the camera and the target
+
+     // NOTE Assuming the camera is direct child of the Scene
+    const objectPosition = new THREE.Vector3();
+
+// camera.position.set(2, 2, 2);
+     scene.add(camera);
+
 class CharacterController {
   constructor() {
     // params: {camera, scene}
@@ -133,6 +162,9 @@ class CharacterController {
           object.castShadow = true;
         }
       });
+  
+     
+      // camera.lookAt(this._model);
       scene.add(this._model);
       this._mixer = new THREE.AnimationMixer(this._model);
       this._loadingManagert = new THREE.LoadingManager();
@@ -160,7 +192,6 @@ class CharacterController {
   }
 
 
-
   Update(timeInSeconds) {
     if (!this._model) return;
     this._stateMachine.Update(timeInSeconds, this._input);
@@ -179,8 +210,14 @@ class CharacterController {
     const _Q = new THREE.Quaternion();
     const _A = new THREE.Vector3();
     const _R = controlModel.quaternion.clone();
+    const _CamClone = camera.quaternion.clone();
 
     const acc = this._acceleration.clone();
+
+
+    controlModel.getWorldPosition(objectPosition);
+
+    camera.position.copy(objectPosition).add(cameraOffset);
 
     if (this._input._keys.shift) acc.multiplyScalar(2.0);
 
@@ -198,6 +235,7 @@ class CharacterController {
         4.0 * Math.PI * timeInSeconds * this._acceleration.y
       );
       _R.multiply(_Q);
+      _CamClone.multiply(_Q);
     }
     if (this._input._keys.right) {
       _A.set(0, 1, 0);
@@ -206,9 +244,12 @@ class CharacterController {
         4.0 * -Math.PI * timeInSeconds * this._acceleration.y
       );
       _R.multiply(_Q);
+      _CamClone.multiply(_Q);
     }
 
     controlModel.quaternion.copy(_R);
+    followDude(camera, _CamClone)
+
 
     const oldPosition = new THREE.Vector3();
     oldPosition.copy(controlModel.quaternion);
@@ -231,6 +272,13 @@ class CharacterController {
 
     if (this._mixer) this._mixer.update(timeInSeconds);
   }
+}
+
+function followDude(cam, _CamClone){
+
+  cam.quaternion.copy(_CamClone);
+  // cam.lookAt()
+
 }
 
 /**
@@ -572,10 +620,7 @@ scene.add(hemiLight);
 /**
  * Sizes
  */
-const sizes = {
-  width: window.innerWidth,
-  height: window.innerHeight,
-};
+
 
 window.addEventListener("resize", () => {
   // Update sizes
@@ -659,23 +704,12 @@ _TestLerp(1.0 - Math.pow(0.3, 1.0 / 100.0),
           1.0 - Math.pow(0.3, 1.0 / 50.0));
 
 
-/**
- * Camera
- */
-// Base camera
-const camera = new THREE.PerspectiveCamera(
-  75,
-  sizes.width / sizes.height,
-  0.01,
-  1000
-);
-camera.position.set(2, 2, 2);
-scene.add(camera);
+
 
 // Controls
-const controls = new OrbitControls(camera, canvas);
-controls.target.set(0, 0.75, 0);
-controls.enableDamping = true;
+// const controls = new OrbitControls(camera, canvas);
+// controls.target.set(0, 0.75, 0);
+// controls.enableDamping = true;
 
 const thirdPersonCamera = new ThirdPersonCamera({
   camera: camera,
@@ -714,7 +748,8 @@ const tick = () => {
   }
 
   // Update controls
-  controls.update();
+  // controls.update();
+
 
   //update Camera
 
